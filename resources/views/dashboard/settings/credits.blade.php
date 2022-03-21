@@ -2,9 +2,7 @@
 
 @section('content')
 <div class="content-panel">
-    @if(isset($sub_menu))
-    @include('dashboard.partials.sub-sidebar')
-    @endif
+    @includeWhen(isset($subMenu), 'dashboard.partials.sub-sidebar')
     <div class="content-wrapper">
         <div class="header sub-header" id="application-setup">
             <span class="uppercase">
@@ -13,23 +11,13 @@
         </div>
         <div class="row">
             <div class="col-sm-12">
+                @include('partials.errors')
                 <h4>Cachet</h4>
 
                 <p>{!! trans('dashboard.settings.credits.license') !!}</p>
 
                 <hr>
-
-                <h4>{{ trans('dashboard.settings.credits.backers-title') }}</h4>
-
-                <p>{!! trans('dashboard.settings.credits.backers') !!}</p>
-
-                <ul>
-                    @foreach($backers as $backer)
-                    <li>{{ $backer['name'] }}</li>
-                    @endforeach
-                </ul>
-
-                <hr>
+                @if($contributors)
 
                 <h4>{{ trans('dashboard.settings.credits.contributors') }}</h4>
 
@@ -44,6 +32,7 @@
                     </li>
                     @endforeach
                 </ul>
+                @endif
 
                 <hr>
             </div>

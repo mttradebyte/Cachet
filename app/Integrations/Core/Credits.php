@@ -16,6 +16,12 @@ use Exception;
 use GuzzleHttp\Client;
 use Illuminate\Contracts\Cache\Repository;
 
+/**
+ * This is the credits class.
+ *
+ * @author Graham Campbell <graham@alt-three.com>
+ * @author James Brooks <james@alt-three.com>
+ */
 class Credits implements CreditsContract
 {
     /**
@@ -47,16 +53,26 @@ class Credits implements CreditsContract
     protected $url;
 
     /**
+     * Are outbound HTTP requests to the internet allowed by
+     * this installation
+     *
+     * @var bool
+     */
+    protected $enabled;
+
+    /**
      * Creates a new credits instance.
      *
      * @param \Illuminate\Contracts\Cache\Repository $cache
+     * @param bool                                   $enabled
      * @param string|null                            $url
      *
      * @return void
      */
-    public function __construct(Repository $cache, $url = null)
+    public function __construct(Repository $cache, bool $enabled = true, $url = null)
     {
         $this->cache = $cache;
+        $this->enabled = $enabled;
         $this->url = $url ?: static::URL;
     }
 
@@ -67,10 +83,16 @@ class Credits implements CreditsContract
      */
     public function latest()
     {
+        if (!$this->enabled) {
+            return null;
+        }
+
         $result = $this->cache->remember('credits', 2880, function () {
             try {
                 return json_decode((new Client())->get($this->url, [
                     'headers' => ['Accept' => 'application/json', 'User-Agent' => defined('CACHET_VERSION') ? 'cachet/'.constant('CACHET_VERSION') : 'cachet'],
+                    'timeout' => 5,
+                    'connect_timeout' => 5,
                 ])->getBody(), true);
             } catch (Exception $e) {
                 return self::FAILED;

@@ -11,9 +11,11 @@
 
 namespace CachetHQ\Cachet\Integrations\GitHub;
 
+use CachetHQ\Cachet\Bus\Events\System\SystemCheckedForUpdatesEvent;
 use CachetHQ\Cachet\Integrations\Contracts\Releases as ReleasesContract;
 use GuzzleHttp\Client;
 use Illuminate\Contracts\Cache\Repository;
+use Illuminate\Support\Facades\Log;
 
 class Releases implements ReleasesContract
 {
@@ -22,7 +24,7 @@ class Releases implements ReleasesContract
      *
      * @var string
      */
-    const URL = 'https://api.github.com/repos/cachethq/cachet/releases/latest';
+    const URL = 'https://api.github.com/repos/fiveai/cachet/releases/latest';
 
     /**
      * The failed status indicator.
@@ -30,6 +32,14 @@ class Releases implements ReleasesContract
      * @var int
      */
     const FAILED = 1;
+
+    /**
+     * The GuzzleHTTP client instance for making the requests
+     *
+     * @var \GuzzleHttp\Client
+     *
+     */
+    protected $client;
 
     /**
      * The cache repository instance.
@@ -53,17 +63,28 @@ class Releases implements ReleasesContract
     protected $url;
 
     /**
+     * Are outbound HTTP requests to the internet allowed by
+     * this installation
+     *
+     * @var bool
+     */
+    protected $enabled;
+
+    /**
      * Creates a new releases instance.
      *
+     * @param \GuzzleHttp\Client                     $client
      * @param \Illuminate\Contracts\Cache\Repository $cache
      * @param string|null                            $token
      * @param string|null                            $url
      *
      * @return void
      */
-    public function __construct(Repository $cache, $token = null, $url = null)
+    public function __construct(Client $client, Repository $cache, bool $enabled = true, $token = null, $url = null)
     {
+        $this->client = $client;
         $this->cache = $cache;
+        $this->enabled = $enabled;
         $this->token = $token;
         $this->url = $url ?: static::URL;
     }
@@ -75,6 +96,10 @@ class Releases implements ReleasesContract
      */
     public function latest()
     {
+        if (!$this->enabled) {
+            return null;
+        }
+
         $release = $this->cache->remember('release.latest', 720, function () {
             $headers = ['Accept' => 'application/vnd.github.v3+json', 'User-Agent' => defined('CACHET_VERSION') ? 'cachet/'.constant('CACHET_VERSION') : 'cachet'];
 
@@ -82,12 +107,23 @@ class Releases implements ReleasesContract
                 $headers['OAUTH-TOKEN'] = $this->token;
             }
 
-            return json_decode((new Client())->get($this->url, [
-                'headers' => $headers,
-            ])->getBody(), true);
+            event(new SystemCheckedForUpdatesEvent());
+
+            try {
+                return json_decode($this->client->get($this->url, [
+                    'headers' => $headers,
+                    'timeout' => 5,
+                    'connect_timeout' => 5,
+                ])->getBody(), true);
+
+            } catch (\Exception $e) {
+                Log::warning('Unable to lookup latest Cachet release. ' . $e->getMessage());
+                return self::FAILED;
+            }
+
         });
 
-        return [
+        return $release === self::FAILED ? null : [
             'tag_name' => $release['tag_name'],
             'prelease' => $release['prerelease'],
             'draft'    => $release['draft'],
